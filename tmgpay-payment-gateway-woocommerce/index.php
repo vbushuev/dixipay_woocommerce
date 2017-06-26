@@ -1,8 +1,8 @@
 <?php
 /*
-Plugin Name: WooCommerce DixiPAY Gateway
+Plugin Name: WooCommerce TMGPay Gateway
 Plugin URI: http://WooThemes.com/
-Description: Extends WooCommerce with an DixiPAY gateway.
+Description: Extends WooCommerce with an TMGPay gateway.
 Version: 1.0
 Author: WooThemes
 Author URI: http://WooThemes.com/
@@ -11,9 +11,9 @@ Author URI: http://WooThemes.com/
 	License URI: http://www.gnu.org/licenses/gpl-3.0.html
 */
 
-add_action('init','redirect_page');
-function redirect_page() {
-    if(isset($_GET['dixipay_cb']) && isset($_GET['order'])) {
+add_action('init','tmg_redirect_page');
+function tmg_redirect_page() {
+    if(isset($_GET['tmgpay_cb']) && isset($_GET['order'])) {
         $site_url = get_bloginfo('url');
         $param = array();
         foreach($_GET as $key=>$value) {
@@ -29,29 +29,37 @@ function redirect_page() {
 	}
 }
 
-register_activation_hook(__FILE__, 'DixiPAY');
+register_activation_hook(__FILE__, 'TMGPay');
 
-function DixiPAY() {
+function TMGPay() {
     global $wpdb;
 
-	$table_name = $wpdb->prefix . "dixipay_transactions";
-	$sql = "CREATE TABLE $table_name (`id` INT( 11 ) NOT NULL AUTO_INCREMENT ,`oid` INT( 11 ) NOT NULL DEFAULT '0',`type` ENUM( 'Captured', 'Void', 'Refunded', 'schedule', 'deschedule', 'nothing' ) NOT NULL DEFAULT 'nothing',`date` VARCHAR( 255 ) NOT NULL ,`amount` DECIMAL( 20, 2 ) NOT NULL ,PRIMARY KEY ( `id` ));";
+	$table_name = $wpdb->prefix . "tmgpay_transactions";
+	$sql = "CREATE TABLE $table_name (
+`id` INT( 11 ) NOT NULL AUTO_INCREMENT ,
+`oid` INT( 11 ) NOT NULL DEFAULT '0',
+`type` ENUM( 'Captured', 'Void', 'Refunded', 'schedule', 'deschedule', 'nothing' ) NOT NULL DEFAULT 'nothing',
+`date` VARCHAR( 255 ) NOT NULL ,
+`amount` DECIMAL( 20, 2 ) NOT NULL ,
+PRIMARY KEY ( `id` )
+);";
+
     require_once(ABSPATH . 'wp-admin/includes/upgrade.php');
     dbDelta($sql);
 }
 
-add_action('plugins_loaded', 'woocommerce_dixipay_init', 0);
-function woocommerce_dixipay_init() {
+add_action('plugins_loaded', 'woocommerce_tmgpay_init', 0);
+function woocommerce_tmgpay_init() {
 	if ( !class_exists( 'WC_Payment_Gateway' ) ) return;
 	/**
  	 * Localisation
 	 */
-	load_plugin_textdomain('wc-gateway-dixipay', false, dirname( plugin_basename( __FILE__ ) ) . '/languages');
+	load_plugin_textdomain('wc-gateway-tmgpay', false, dirname( plugin_basename( __FILE__ ) ) . '/languages');
 
 	/**
  	 * Gateway class
  	 */
-	class WC_Gateway_Dixipay extends WC_Payment_Gateway {
+	class WC_Gateway_Tmgpay extends WC_Payment_Gateway {
 	var $notify_url;
 	/**
 	 * Constructor for the gateway.
@@ -60,16 +68,16 @@ function woocommerce_dixipay_init() {
 	 * @return void
 	 */
 	public function __construct() {
-		$this->id                = 'dixipay';
-		$this->icon              = WP_PLUGIN_URL . "/" . plugin_basename(dirname(__FILE__)) . '/images/dixipay.png';
+		$this->id                = 'tmgpay';
+		$this->icon              = WP_PLUGIN_URL . "/" . plugin_basename(dirname(__FILE__)) . '/images/tmgpay.png';
 		$this->has_fields        = false;
-		$this->order_button_text = __( 'Proceed to DixiPAY', 'woocommerce' );
-		$this->gateway_url       = "https://lk.dixipay.eu/gates/paypage";//$this->get_option( 'gateway_url' );
-		//$this->signature_url       = "https://lk.dixipay.eu/gates/signature";//$this->get_option( 'gateway_url' );
-		$this->signature_url       = "https://lk.dixipay.eu/gates/signature";//$this->get_option( 'gateway_url' );
-		//$this->testurl           = 'https://secure.test.dixipay.eu/payment/auth';
-		$this->method_title      = __( 'DixiPAY', 'woocommerce' );
-		$this->notify_url        = str_replace( 'https:', 'http:', add_query_arg( 'wc-api', 'WC_Gateway_dixipay', home_url( '/' ) ) );
+		$this->order_button_text = __( 'Proceed to TMGPay', 'woocommerce' );
+		$this->gateway_url       = $this->get_option( 'gateway_url' )."/gates/paypage";
+        $this->signature_url     = $this->get_option( 'gateway_url' )."/gates/signature";
+		// $this->gateway_url       = "https://lk.dixipay.eu/gates/paypage";//$this->get_option( 'gateway_url' );
+
+		$this->method_title      = __( 'TMGPay', 'woocommerce' );
+		$this->notify_url        = str_replace( 'https:', 'http:', add_query_arg( 'wc-api', 'WC_Gateway_tmgpay', home_url( '/' ) ) );
 		// Load the settings.
 		$this->init_form_fields();
 		$this->init_settings();
@@ -77,7 +85,6 @@ function woocommerce_dixipay_init() {
 		$this->title 			= $this->get_option( 'title' );
 		$this->description 		= $this->get_option( 'description' );
 		$this->api_key 	        = $this->get_option( 'api_key' );
-
 		$this->client_key 	    = $this->get_option( 'client_key' );
 		$this->client_password 	= $this->get_option( 'client_password' );
 		$this->payment_type 	= 'sale';//$this->get_option( 'payment_type' );
@@ -102,19 +109,34 @@ function woocommerce_dixipay_init() {
 			$this->log = new WC_Logger();
 		}
 		// Actions
-		add_action( 'valid-dixipay-standard-ipn-request', array( $this, 'successful_request' ) );
+		add_action( 'valid-tmgpay-standard-ipn-request', array( $this, 'successful_request' ) );
 	if(!isset($_GET['order'])) {
-		add_action( 'woocommerce_receipt_dixipay', array( $this, 'receipt_page' ) );
+		add_action( 'woocommerce_receipt_tmgpay', array( $this, 'receipt_page' ) );
 	}
 		add_action( 'woocommerce_update_options_payment_gateways_' . $this->id, array( $this, 'process_admin_options' ) );
-		add_action( 'woocommerce_thankyou_dixipay', array( $this, 'pdt_return_handler' ) );
+		add_action( 'woocommerce_thankyou_tmgpay', array( $this, 'pdt_return_handler' ) );
 		// Payment listener/API hook
-		add_action( 'woocommerce_api_wc_gateway_dixipay', array( $this, 'check_ipn_response' ) );
-		//add_action( 'woocommerce_api_wc_gateway_dixipay', array( $this, 'check_ipn_request_is_valid' ) );
-		//add_action( 'woocommerce_api_wc_gateway_dixipay', array( $this, 'successful_request' ) );
+        add_action( 'woocommerce_api_wc_gateway_tmgpay', array( $this, 'check_ipn_response' ) );
+		//add_action( 'woocommerce_api_wc_gateway_tmgpay', array( $this, 'check_ipn_response' ) );
 		if ( ! $this->is_valid_for_use() ) {
 			$this->enabled = false;
 		}
+	}
+
+    function check_ipn_response( $posted ) {
+        // Custom holds post ID
+		if ( ! empty( $_REQUEST['ticketNumber'] ) ) {
+			//$order = $this->get_dixipay_order( $_REQUEST['transactionCode'] );
+			$order = new WC_Order( $_REQUEST['ticketNumber'] );
+            // print_r($order);
+            // print_r($_REQUEST);
+        	//$this->log->add( 'tmgpay', 'Found order #' . $order->id );
+			// Lowercase returned variables
+			if(in_array($_REQUEST['responseCode'],['A01','A02'])){
+                $order->payment_complete();
+            }
+		}
+        return true;
 	}
 	/**
 	 * Check if this gateway is enabled and available in the user's country
@@ -123,7 +145,7 @@ function woocommerce_dixipay_init() {
 	 * @return bool
 	 */
 	function is_valid_for_use() {
-		if ( ! in_array( get_woocommerce_currency(), apply_filters( 'woocommerce_dixipay_supported_currencies', array( 'AUD', 'BRL', 'CAD', 'MXN', 'NZD', 'HKD', 'SGD', 'USD', 'EUR', 'JPY', 'TRY', 'NOK', 'CZK', 'DKK', 'HUF', 'ILS', 'MYR', 'PHP', 'PLN', 'SEK', 'CHF', 'TWD', 'THB', 'GBP', 'RMB', 'RUB' ) ) ) ) {
+		if ( ! in_array( get_woocommerce_currency(), apply_filters( 'woocommerce_tmgpay_supported_currencies', array( 'AUD', 'BRL', 'CAD', 'MXN', 'NZD', 'HKD', 'SGD', 'USD', 'EUR', 'JPY', 'TRY', 'NOK', 'CZK', 'DKK', 'HUF', 'ILS', 'MYR', 'PHP', 'PLN', 'SEK', 'CHF', 'TWD', 'THB', 'GBP', 'RMB', 'RUB' ) ) ) ) {
 			return false;
 		}
 		return true;
@@ -136,8 +158,8 @@ function woocommerce_dixipay_init() {
 	 */
 	public function admin_options() {
 		?>
-		<h3><?php _e( 'DixiPAY', 'woocommerce' ); ?></h3>
-		<p><?php _e( 'DixiPAY works by sending the user to DixiPAY to enter their payment information.', 'woocommerce' ); ?></p>
+		<h3><?php _e( 'TMGPay', 'woocommerce' ); ?></h3>
+		<p><?php _e( 'TMGPay works by sending the user to TMGPay to enter their payment information.', 'woocommerce' ); ?></p>
 		<?php if ( $this->is_valid_for_use() ) : ?>
 			<table class="form-table">
 			<?php
@@ -146,7 +168,7 @@ function woocommerce_dixipay_init() {
 			?>
 			</table><!--/.form-table-->
 		<?php else : ?>
-			<div class="inline error"><p><strong><?php _e( 'Gateway Disabled', 'woocommerce' ); ?></strong>: <?php _e( 'DixiPAY does not support your store currency.', 'woocommerce' ); ?></p></div>
+			<div class="inline error"><p><strong><?php _e( 'Gateway Disabled', 'woocommerce' ); ?></strong>: <?php _e( 'TMGPay does not support your store currency.', 'woocommerce' ); ?></p></div>
 		<?php
 			endif;
 	}
@@ -162,34 +184,34 @@ function woocommerce_dixipay_init() {
 			'enabled' => array(
 				'title'   => __( 'Enable/Disable', 'woocommerce' ),
 				'type'    => 'checkbox',
-				'label'   => __( 'Enable DixiPAY', 'woocommerce' ),
+				'label'   => __( 'Enable TMGPay', 'woocommerce' ),
 				'default' => 'yes'
 			),
 			'title' => array(
 				'title'       => __( 'Title', 'woocommerce' ),
 				'type'        => 'text',
 				'description' => __( 'This controls the title which the user sees during checkout.', 'woocommerce' ),
-				'default'     => __( 'DixiPAY', 'woocommerce' ),
+				'default'     => __( 'TMGPay', 'woocommerce' ),
 				'desc_tip'    => false,
 			),
 			'description' => array(
 				'title'       => __( 'Description', 'woocommerce' ),
 				'type'        => 'textarea',
 				'description' => __( 'This controls the description which the user sees during checkout.', 'woocommerce' ),
-				'default'     => __( 'Pay via DixiPAY with your bank card', 'woocommerce' )
+				'default'     => __( 'Pay via TMGPay with your bank card', 'woocommerce' )
 			),
-			// 'gateway_url' => array(
-			// 	'title'       => __( 'Gateway Url', 'woocommerce' ),
-			// 	'type'        => 'text',
-			// 	'description' => __( 'Your DixiPAY URL.', 'woocommerce' ),
-			// 	'default'     => '',
-			// 	'desc_tip'    => false,
-			// 	'placeholder' => 'Gateway URL'
-			// ),
+			'gateway_url' => array(
+				'title'       => __( 'Gateway Url', 'woocommerce' ),
+				'type'        => 'text',
+				'description' => __( 'Your TMGPay URL.', 'woocommerce' ),
+				'default'     => 'https://lk.dixipay.eu',
+				'desc_tip'    => false,
+				'placeholder' => 'Gateway URL'
+			),
 			'client_key' => array(
 				'title'       => __( 'User name', 'woocommerce' ),
 				'type'        => 'text',
-				'description' => __( 'Your DixiPAY userName.', 'woocommerce' ),
+				'description' => __( 'Your TMGPay userName.', 'woocommerce' ),
 				'default'     => 'apiTMG',
 				'desc_tip'    => false,
 				'placeholder' => 'User name'
@@ -197,7 +219,7 @@ function woocommerce_dixipay_init() {
 			'client_password' => array(
 				'title'       => __( 'Password', 'woocommerce' ),
 				'type'        => 'password',
-				'description' => __( 'Your DixiPAY Password.', 'woocommerce' ),
+				'description' => __( 'Your TMGPay Password.', 'woocommerce' ),
 				'default'     => '2sgJUF7IHKb4ip7EkA27FEEtCDL4iKDg',
 				'desc_tip'    => false,
 				'placeholder' => 'Password'
@@ -222,7 +244,7 @@ function woocommerce_dixipay_init() {
 			'api_key' => array(
 				'title'       => __( 'API key', 'woocommerce' ),
 				'type'        => 'text',
-				'description' => __( 'Please Type DixiPAY API key.', 'woocommerce' ),
+				'description' => __( 'Please Type TMGPay API key.', 'woocommerce' ),
 
 				'default'     => '135a376b-41ae-4351-b2ad-076ac808e65b',
 				'desc_tip'    => false,
@@ -240,7 +262,7 @@ function woocommerce_dixipay_init() {
 			'lang' => array(
 				'title'       => __( 'Language', 'woocommerce' ),
 				'type'        => 'select',
-				'description' => __( 'The language that the DixiPAY secure processing page will be displayed in.', 'woocommerce' ),
+				'description' => __( 'The language that the TMGPay secure processing page will be displayed in.', 'woocommerce' ),
 				'default'     => 'RU',
 				'desc_tip'    => false,
 				'options'     => array(
@@ -261,16 +283,16 @@ function woocommerce_dixipay_init() {
 		);
 	}
 	/**
-	 * Get dixipay Args for passing to PP
+	 * Get tmgpay Args for passing to PP
 	 *
 	 * @access public
 	 * @param mixed $order
 	 * @return array
 	 */
-	function get_dixipay_args( $order ) {
+	function get_tmgpay_args( $order ) {
 		$order_id = $order->id;
 		if ( 'yes' == $this->debug ) {
-			$this->log->add( 'dixipay', 'Generating payment form for order ' . $order->get_order_number() . '. Notify URL: ' . $this->notify_url );
+			$this->log->add( 'tmgpay', 'Generating payment form for order ' . $order->get_order_number() . '. Notify URL: ' . $this->notify_url );
 		}
         $foo = $order->get_total();
         $orderTotal = number_format((float)$foo, 2, '.', '');
@@ -285,7 +307,7 @@ function woocommerce_dixipay_init() {
                 )
           );
 		$success_url = esc_url( add_query_arg( 'utm_nooverride', '1', $this->get_return_url( $order ) ) );
-	    $success_url = $success_url.'&dixipay_cb=1';
+	    $success_url = $success_url.'&tmgpay_cb=1';
 		$success_url = str_replace('&#038;','&',$success_url);
 
 				$encoded_signature = md5 (strtoupper (
@@ -319,8 +341,8 @@ function woocommerce_dixipay_init() {
             $orderItemsCount++;
         }
         $amount = intval(100*$order->get_total());
-		// dixipay Args
-		$dixipay_args = array_merge(
+		// tmgpay Args
+		$tmgpay_args = array_merge(
 			array(
 				//'cmd'           => '_cart',
                 'requestType' =>$this->payment_type,
@@ -331,47 +353,47 @@ function woocommerce_dixipay_init() {
                 'transactionIndustryType'=>'EC',
 
                 "customerAccountCode"=>$this->customer_account_code,
-                'amount'=>'5200',//$amount,
+                'amount'=>$amount,
                 'transactionIndustryType'=>'EC',
-                'transactionCode'=>$order->id,
+                //'transactionCode'=>'000000002353',
                 'apiKey'=>$this->api_key,
 
                 "accountType"=>"R",
-            	"currency"=>"USD",//$order->get_currency(),
+            	"currency"=>$order->get_currency(),
             	"lang"=>$this->lang,
 
 
                 "memo"=>"xyz",
             	"holderType"=>"P",
             	"holderName"=>"DIX+PAY",
-            	"holderBirthdate"=>"19800101",
-            	"street"=>$order->get_billing_address_1()." ".$order->get_billing_address_2(),
+            	"holderBirthdate"=>"19700101",
+            	"street"=>$order->get_billing_address_1().",".$order->get_billing_address_2(),
             	"city"=>$order->get_billing_city(),
             	"zipCode"=>$order->get_billing_postcode(),
             	"phone"=>$order->get_billing_phone(),
             	"email"=>$order->get_billing_email(),
 
-                 "itemCount"=>"{$orderItemsCount}",
-            	// "items"=>$orderItems,
+                "itemCount"=>"{$orderItemsCount}",
+            	"items"=>$orderItems,
 			)
 		);
 
 		/////////////////////////////////////////////////
-		$dixipay_args = apply_filters( 'woocommerce_dixipay_args', $dixipay_args );
+		$tmgpay_args = apply_filters( 'woocommerce_tmgpay_args', $tmgpay_args );
 
-		return $dixipay_args;
+		return $tmgpay_args;
 	}
 	/**
-	 * Generate the dixipay button link
+	 * Generate the tmgpay button link
 	 *
 	 * @access public
 	 * @param mixed $order_id
 	 * @return string
 	 */
-	function generate_dixipay_form( $order_id ) {
+	function generate_tmgpay_form( $order_id ) {
 		$order = new WC_Order( $order_id );
-		$dixipay_adr = $this->gateway_url ;
-		$dixipay_args = $this->get_dixipay_args( $order );
+		$tmgpay_adr = $this->gateway_url ;
+		$tmgpay_args = $this->get_tmgpay_args( $order );
         // Create a stream
         $opts = array(
             'http'=>array(
@@ -379,8 +401,7 @@ function woocommerce_dixipay_init() {
                 'header'=>"Content-Type: text/plain; charset=utf-8\r\n"
             )
         );
-
-        $responseString = file_get_contents($this->signature_url."?".http_build_query($dixipay_args), false, stream_context_create($opts));
+        $responseString = file_get_contents($this->signature_url."?".http_build_query($tmgpay_args), false, stream_context_create($opts));
         $response = array();
         if(preg_match_all("/([^=]+)=([^\&]+)&?/uim",$responseString,$m)){
             for($i=0;$i<count($m[0]);++$i){
@@ -388,46 +409,40 @@ function woocommerce_dixipay_init() {
                 //$response[$m[1][$i]] = $m[2][$i];
             }
         }
-        // print_r($dixipay_args);
-        //print_r($response);
-        // $dixipay_args_array = array();
-		// $dixipay_args_array[] = '<input type="hidden" name="action" value="' . esc_attr($response["action"]). '" />';
-        if(!empty($response["action"])){
-            // wc_enqueue_js( '
-    		// 	$.blockUI({
-    		// 			message: "' . esc_js( __( 'Thank you for your order. We are now redirecting you to DixiPAY to make payment.', 'woocommerce' ) ) . '",
-    		// 			baseZ: 99999,
-    		// 			overlayCSS:
-    		// 			{
-    		// 				background: "#fff",
-    		// 				opacity: 0.6
-    		// 			},
-    		// 			css: {
-    		// 				padding:        "20px",
-    		// 				zindex:         "9999999",
-    		// 				textAlign:      "center",
-    		// 				color:          "#555",
-    		// 				border:         "3px solid #aaa",
-    		// 				backgroundColor:"#fff",
-    		// 				cursor:         "wait",
-    		// 				lineHeight:		"24px",
-    		// 			}
-    		// 		});
-    		// 	jQuery("#submit_dixipay_payment_form").click();
-    		// ' );
-    		$s_form = '<form action="' . esc_url( $dixipay_adr ) . '" method="post" id="dixipay_payment_form" target="_top">
-    				<input type="hidden" name="action" value="' . $response["action"]. '" />
-    				<!-- Button Fallback -->
-    				<div class="payment_buttons">
-    					<input type="submit" class="button alt" id="submit_dixipay_payment_form" value="' . __( 'Pay via DixiPAY', 'woocommerce' ) . '" /> <a class="button cancel" href="' . esc_url( $order->get_cancel_order_url() ) . '">' . __( 'Cancel order &amp; restore cart', 'woocommerce' ) . '</a>
-    				</div>
-    				<script type="text/javascript">
-    					//jQuery(".payment_buttons").hide();
-    				</script>
-    			</form>';
-        }
-        else print_r($response);
-        return $s_form;
+        // $tmgpay_args_array = array();
+		// $tmgpay_args_array[] = '<input type="hidden" name="action" value="' . esc_attr($response["action"]). '" />';
+        wc_enqueue_js( '
+			$.blockUI({
+					message: "' . esc_js( __( 'Thank you for your order. We are now redirecting you to TMGPay to make payment.', 'woocommerce' ) ) . '",
+					baseZ: 99999,
+					overlayCSS:
+					{
+						background: "#fff",
+						opacity: 0.6
+					},
+					css: {
+						padding:        "20px",
+						zindex:         "9999999",
+						textAlign:      "center",
+						color:          "#555",
+						border:         "3px solid #aaa",
+						backgroundColor:"#fff",
+						cursor:         "wait",
+						lineHeight:		"24px",
+					}
+				});
+			jQuery("#submit_tmgpay_payment_form").click();
+		' );
+		return '<form action="' . esc_url( $tmgpay_adr ) . '" method="post" id="tmgpay_payment_form" target="_top">
+				<input type="hidden" name="action" value="' . $response["action"]. '" />
+				<!-- Button Fallback -->
+				<div class="payment_buttons">
+					<input type="submit" class="button alt" id="submit_tmgpay_payment_form" value="' . __( 'Pay via TMGPay', 'woocommerce' ) . '" /> <a class="button cancel" href="' . esc_url( $order->get_cancel_order_url() ) . '">' . __( 'Cancel order &amp; restore cart', 'woocommerce' ) . '</a>
+				</div>
+				<script type="text/javascript">
+					jQuery(".payment_buttons").hide();
+				</script>
+			</form>';
 	}
 	/**
 	 * Process the payment and return the result
@@ -439,12 +454,12 @@ function woocommerce_dixipay_init() {
 	function process_payment( $order_id ) {
 		$order = new WC_Order( $order_id );
 		if ( ! $this->form_submission_method ) {
-			$dixipay_args = $this->get_dixipay_args( $order );
-			$dixipay_args = http_build_query( $dixipay_args, '', '&' );
-			$dixipay_adr = $this->gateway_url . '?';
+			$tmgpay_args = $this->get_tmgpay_args( $order );
+			$tmgpay_args = http_build_query( $tmgpay_args, '', '&' );
+			$tmgpay_adr = $this->gateway_url . '?';
 			return array(
 				'result' 	=> 'success',
-				'redirect'	=> $dixipay_adr . $dixipay_args
+				'redirect'	=> $tmgpay_adr . $tmgpay_args
 			);
 		} else {
 			return array(
@@ -460,23 +475,22 @@ function woocommerce_dixipay_init() {
 	 * @return void
 	 */
 	function receipt_page( $order ) {
-		echo '<p>' . __( 'Thank you - your order is now pending payment. You should be automatically redirected to DixiPAY to make payment.', 'woocommerce' ) . '</p>';
-		echo $this->generate_dixipay_form( $order );
+		echo '<p>' . __( 'Thank you - your order is now pending payment. You should be automatically redirected to TMGPay to make payment.', 'woocommerce' ) . '</p>';
+		echo $this->generate_tmgpay_form( $order );
 	}
 	/**
-	 * Check dixipay IPN validity
+	 * Check tmgpay IPN validity
 	 **/
 	function check_ipn_request_is_valid( $ipn_response ) {
 		// Get url
-		$dixipay_adr = $this->gateway_url . '?';
-        print_r($ipn_response);
+		$tmgpay_adr = $this->gateway_url . '?';
 		if ( 'yes' == $this->debug ) {
-			$this->log->add( 'dixipay', 'Checking IPN response is valid via ' . $dixipay_adr . '...' );
+			$this->log->add( 'tmgpay', 'Checking IPN response is valid via ' . $tmgpay_adr . '...' );
 		}
 		// Get recieved values from post data
 		$validate_ipn = array( 'cmd' => '_notify-validate' );
-		$validate_ipn .= stripslashes_deep( $ipn_response );
-		// Send back post vars to dixipay
+		$validate_ipn += stripslashes_deep( $ipn_response );
+		// Send back post vars to tmgpay
 		$params = array(
 			'body' 			=> $validate_ipn,
 			'sslverify' 	=> false,
@@ -487,24 +501,24 @@ function woocommerce_dixipay_init() {
 			'user-agent'	=> 'WooCommerce/' . WC()->version
 		);
 		if ( 'yes' == $this->debug ) {
-			$this->log->add( 'dixipay', 'IPN Request: ' . print_r( $params, true ) );
+			$this->log->add( 'tmgpay', 'IPN Request: ' . print_r( $params, true ) );
 		}
 		// Post back to get a response
-		$response = wp_remote_post( $dixipay_adr, $params );
+		$response = wp_remote_post( $tmgpay_adr, $params );
 		if ( 'yes' == $this->debug ) {
-			$this->log->add( 'dixipay', 'IPN Response: ' . print_r( $response, true ) );
+			$this->log->add( 'tmgpay', 'IPN Response: ' . print_r( $response, true ) );
 		}
 		// check to see if the request was valid
 		if ( ! is_wp_error( $response ) && $response['response']['code'] >= 200 && $response['response']['code'] < 300 && ( strcmp( $response['body'], "VERIFIED" ) == 0 ) ) {
 			if ( 'yes' == $this->debug ) {
-				$this->log->add( 'dixipay', 'Received valid response from DixiPAY' );
+				$this->log->add( 'tmgpay', 'Received valid response from TMGPay' );
 			}
 			return true;
 		}
 		if ( 'yes' == $this->debug ) {
-			$this->log->add( 'dixipay', 'Received invalid response from DixiPAY' );
+			$this->log->add( 'tmgpay', 'Received invalid response from TMGPay' );
 			if ( is_wp_error( $response ) ) {
-				$this->log->add( 'dixipay', 'Error response: ' . $response->get_error_message() );
+				$this->log->add( 'tmgpay', 'Error response: ' . $response->get_error_message() );
 			}
 		}
 		return false;
@@ -517,37 +531,13 @@ function woocommerce_dixipay_init() {
 	 * @param array $posted
 	 * @return void
 	 */
-	function check_ipn_response( $posted ) {
-        print_r($_REQUEST);
-        $posted = stripslashes_deep( $posted );
-		// Custom holds post ID
-		if ( ! empty( $_REQUEST['transactionCode'] ) ) {
-			//$order = $this->get_dixipay_order( $_REQUEST['transactionCode'] );
-			$order = new WC_Order( $_REQUEST['transactionCode'] );
-            print_r($order);
-			//$this->log->add( 'dixipay', 'Found order #' . $order->id );
-			// Lowercase returned variables
-			if(in_array($_REQUEST['responseCode'],['A01'])){
-                $order->payment_complete();
-            }
-
-		}
-        die();
-	}
-	/**
-	 * Successful Payment!
-	 *
-	 * @access public
-	 * @param array $posted
-	 * @return void
-	 */
 	function successful_request( $posted ) {
 		$posted = stripslashes_deep( $posted );
 		// Custom holds post ID
-		if ( ! empty( $posted['transactionCode'] ) ) {
-			$order = $this->get_dixipay_order( $posted['transactionCode'], $posted['invoice'] );
+		if ( ! empty( $posted['invoice'] ) && ! empty( $posted['custom'] ) ) {
+			$order = $this->get_tmgpay_order( $posted['custom'], $posted['invoice'] );
 			if ( 'yes' == $this->debug ) {
-				$this->log->add( 'dixipay', 'Found order #' . $order->id );
+				$this->log->add( 'tmgpay', 'Found order #' . $order->id );
 			}
 			// Lowercase returned variables
 			$posted['payment_status'] 	= strtolower( $posted['payment_status'] );
@@ -557,7 +547,7 @@ function woocommerce_dixipay_init() {
 				$posted['payment_status'] = 'completed';
 			}
 			if ( 'yes' == $this->debug ) {
-				$this->log->add( 'dixipay', 'Payment status: ' . $posted['payment_status'] );
+				$this->log->add( 'tmgpay', 'Payment status: ' . $posted['payment_status'] );
 			}
 			// We are here so lets check status and do actions
 			switch ( $posted['payment_status'] ) {
@@ -566,7 +556,7 @@ function woocommerce_dixipay_init() {
 					// Check order not already completed
 					if ( $order->status == 'completed' ) {
 						if ( 'yes' == $this->debug ) {
-							$this->log->add( 'dixipay', 'Aborting, Order #' . $order->id . ' is already complete.' );
+							$this->log->add( 'tmgpay', 'Aborting, Order #' . $order->id . ' is already complete.' );
 						}
 						exit;
 					}
@@ -574,40 +564,40 @@ function woocommerce_dixipay_init() {
 					$accepted_types = array( 'cart', 'instant', 'express_checkout', 'web_accept', 'masspay', 'send_money' );
 					if ( ! in_array( $posted['txn_type'], $accepted_types ) ) {
 						if ( 'yes' == $this->debug ) {
-							$this->log->add( 'dixipay', 'Aborting, Invalid type:' . $posted['txn_type'] );
+							$this->log->add( 'tmgpay', 'Aborting, Invalid type:' . $posted['txn_type'] );
 						}
 						exit;
 					}
 					// Validate currency
 					if ( $order->get_order_currency() != $posted['mc_currency'] ) {
 						if ( 'yes' == $this->debug ) {
-							$this->log->add( 'dixipay', 'Payment error: Currencies do not match (code ' . $posted['mc_currency'] . ')' );
+							$this->log->add( 'tmgpay', 'Payment error: Currencies do not match (code ' . $posted['mc_currency'] . ')' );
 						}
 						// Put this order on-hold for manual checking
-						$order->update_status( 'on-hold', sprintf( __( 'Validation error: DixiPAY currencies do not match (code %s).', 'woocommerce' ), $posted['mc_currency'] ) );
+						$order->update_status( 'on-hold', sprintf( __( 'Validation error: TMGPay currencies do not match (code %s).', 'woocommerce' ), $posted['mc_currency'] ) );
 						exit;
 					}
 					// Validate amount
 					if ( $order->get_total() != $posted['mc_gross'] ) {
 						if ( 'yes' == $this->debug ) {
-							$this->log->add( 'dixipay', 'Payment error: Amounts do not match (gross ' . $posted['mc_gross'] . ')' );
+							$this->log->add( 'tmgpay', 'Payment error: Amounts do not match (gross ' . $posted['mc_gross'] . ')' );
 						}
 						// Put this order on-hold for manual checking
-						$order->update_status( 'on-hold', sprintf( __( 'Validation error: DixiPAY amounts do not match (gross %s).', 'woocommerce' ), $posted['mc_gross'] ) );
+						$order->update_status( 'on-hold', sprintf( __( 'Validation error: TMGPay amounts do not match (gross %s).', 'woocommerce' ), $posted['mc_gross'] ) );
 						exit;
 					}
 					// Validate Email Address
 					if ( strcasecmp( trim( $posted['receiver_email'] ), trim( $this->receiver_email ) ) != 0 ) {
 						if ( 'yes' == $this->debug ) {
-							$this->log->add( 'dixipay', "IPN Response is for another one: {$posted['receiver_email']} our email is {$this->receiver_email}" );
+							$this->log->add( 'tmgpay', "IPN Response is for another one: {$posted['receiver_email']} our email is {$this->receiver_email}" );
 						}
 						// Put this order on-hold for manual checking
-						$order->update_status( 'on-hold', sprintf( __( 'Validation error: DixiPAY IPN response from a different email address (%s).', 'woocommerce' ), $posted['receiver_email'] ) );
+						$order->update_status( 'on-hold', sprintf( __( 'Validation error: TMGPay IPN response from a different email address (%s).', 'woocommerce' ), $posted['receiver_email'] ) );
 						exit;
 					}
 					 // Store PP Details
 					if ( ! empty( $posted['payer_email'] ) ) {
-						update_post_meta( $order->id, 'Payer DixiPAY address', wc_clean( $posted['payer_email'] ) );
+						update_post_meta( $order->id, 'Payer TMGPay address', wc_clean( $posted['payer_email'] ) );
 					}
 					if ( ! empty( $posted['txn_id'] ) ) {
 						update_post_meta( $order->id, 'Transaction ID', wc_clean( $posted['txn_id'] ) );
@@ -628,7 +618,7 @@ function woocommerce_dixipay_init() {
 						$order->update_status( 'on-hold', sprintf( __( 'Payment pending: %s', 'woocommerce' ), $posted['pending_reason'] ) );
 					}
 					if ( 'yes' == $this->debug ) {
-						$this->log->add( 'dixipay', 'Payment complete.' );
+						$this->log->add( 'tmgpay', 'Payment complete.' );
 					}
 				break;
 				case 'denied' :
@@ -646,7 +636,7 @@ function woocommerce_dixipay_init() {
 						$mailer = WC()->mailer();
 						$message = $mailer->wrap_message(
 							__( 'Order refunded/reversed', 'woocommerce' ),
-							sprintf( __( 'Order %s has been marked as refunded - DixiPAY reason code: %s', 'woocommerce' ), $order->get_order_number(), $posted['reason_code'] )
+							sprintf( __( 'Order %s has been marked as refunded - TMGPay reason code: %s', 'woocommerce' ), $order->get_order_number(), $posted['reason_code'] )
 						);
 						$mailer->send( get_option( 'admin_email' ), sprintf( __( 'Payment for order %s refunded/reversed', 'woocommerce' ), $order->get_order_number() ), $message );
 					}
@@ -657,7 +647,7 @@ function woocommerce_dixipay_init() {
 					$mailer = WC()->mailer();
 					$message = $mailer->wrap_message(
 						__( 'Order reversed', 'woocommerce' ),
-						sprintf(__( 'Order %s has been marked on-hold due to a reversal - DixiPAY reason code: %s', 'woocommerce' ), $order->get_order_number(), $posted['reason_code'] )
+						sprintf(__( 'Order %s has been marked on-hold due to a reversal - TMGPay reason code: %s', 'woocommerce' ), $order->get_order_number(), $posted['reason_code'] )
 					);
 					$mailer->send( get_option( 'admin_email' ), sprintf( __( 'Payment for order %s reversed', 'woocommerce' ), $order->get_order_number() ), $message );
 				break;
@@ -682,10 +672,10 @@ function woocommerce_dixipay_init() {
 	 * Alternative to IPN
 	 */
 	public function pdt_return_handler() {
-		echo "<pre>";print_r($_REQUEST);die();
+		//echo "<pre>";print_r($_REQUEST);die();
 		$posted = stripslashes_deep( $_REQUEST );
 		if ( ! empty( $this->identity_token ) && ! empty( $posted['cm'] ) ) {
-			$order = $this->get_dixipay_order( $posted['cm'] );
+			$order = $this->get_tmgpay_order( $posted['cm'] );
 			if ( 'pending' != $order->status ) {
 				return false;
 			}
@@ -693,7 +683,7 @@ function woocommerce_dixipay_init() {
 			switch ( $posted['st'] ) {
 				case 'completed' :
 					// Validate transaction
-					$dixipay_adr = $this->gateway_url . '?';
+					$tmgpay_adr = $this->gateway_url . '?';
 					$pdt = array(
 						'body' 			=> array(
 							'cmd' => '_notify-synch',
@@ -706,7 +696,7 @@ function woocommerce_dixipay_init() {
 						'user-agent'	=> 'WooCommerce/' . WC_VERSION
 					);
 					// Post back to get a response
-					$response = wp_remote_post( $dixipay_adr, $pdt );
+					$response = wp_remote_post( $tmgpay_adr, $pdt );
 					if ( is_wp_error( $response ) ) {
 						return false;
 					}
@@ -716,10 +706,10 @@ function woocommerce_dixipay_init() {
 					// Validate Amount
 					if ( $order->get_total() != $posted['amt'] ) {
 						if ( 'yes' == $this->debug ) {
-							$this->log->add( 'dixipay', 'Payment error: Amounts do not match (amt ' . $posted['amt'] . ')' );
+							$this->log->add( 'tmgpay', 'Payment error: Amounts do not match (amt ' . $posted['amt'] . ')' );
 						}
 						// Put this order on-hold for manual checking
-						$order->update_status( 'on-hold', sprintf( __( 'Validation error: DixiPAY amounts do not match (amt %s).', 'woocommerce' ), $posted['amt'] ) );
+						$order->update_status( 'on-hold', sprintf( __( 'Validation error: TMGPay amounts do not match (amt %s).', 'woocommerce' ), $posted['amt'] ) );
 						return true;
 					} else {
 						// Store PP Details
@@ -734,13 +724,13 @@ function woocommerce_dixipay_init() {
 		return false;
 	}
 	/**
-	 * get_dixipay_order function.
+	 * get_tmgpay_order function.
 	 *
 	 * @param  string $custom
 	 * @param  string $invoice
 	 * @return WC_Order object
 	 */
-	private function get_dixipay_order( $custom, $invoice = '' ) {
+	private function get_tmgpay_order( $custom, $invoice = '' ) {
 		$custom = maybe_unserialize( $custom );
 		// Backwards comp for IPN requests
 		if ( is_numeric( $custom ) ) {
@@ -761,7 +751,7 @@ function woocommerce_dixipay_init() {
 		// Validate key
 		if ( $order->order_key !== $order_key ) {
 			if ( 'yes' == $this->debug ) {
-				$this->log->add( 'dixipay', 'Error: Order Key does not match invoice.' );
+				$this->log->add( 'tmgpay', 'Error: Order Key does not match invoice.' );
 			}
 			exit;
 		}
@@ -774,21 +764,21 @@ function woocommerce_dixipay_init() {
 	/**
  	* Add the Gateway to WooCommerce
  	**/
-	function woocommerce_add_dixipay_gateway($methods) {
-		$methods[] = 'WC_Gateway_Dixipay';
+	function woocommerce_add_tmgpay_gateway($methods) {
+		$methods[] = 'WC_Gateway_Tmgpay';
 		return $methods;
 	}
 
-	add_filter('woocommerce_payment_gateways', 'woocommerce_add_dixipay_gateway' );
+	add_filter('woocommerce_payment_gateways', 'woocommerce_add_tmgpay_gateway' );
 }
 // Showing Data in Order Detail Form
-function output_dixipay($post) {
-	echo "<pre>"; print_r($post);die();
+function output_tmgpay($post) {
+	//echo "<pre>"; print_r($post);die();
 		global $wpdb;
-		$query = "SELECT COUNT(*) FROM {$wpdb->postmeta} WHERE meta_key='_dixipay_data' AND post_id='".$post->id."'";
+		$query = "SELECT COUNT(*) FROM {$wpdb->postmeta} WHERE meta_key='_tmgpay_data' AND post_id='".$post->id."'";
         if($wpdb->get_var($query) > 0) {
-			//checking status from dixipay
-			  $query = "SELECT meta_value FROM {$wpdb->postmeta} WHERE meta_key='_dixipay_data' AND post_id='".$post->id."'";
+			//checking status from tmgpay
+			  $query = "SELECT meta_value FROM {$wpdb->postmeta} WHERE meta_key='_tmgpay_data' AND post_id='".$post->id."'";
 			  $serialize_data = $wpdb->get_var($query);
 			//CHM Start
 			if($serialize_data) {
@@ -798,7 +788,7 @@ function output_dixipay($post) {
 			 $card_data=$card_data[0].$card_data[1];
 
 			 //getting password and key from db
-			 $query = "SELECT option_value FROM {$wpdb->options} WHERE option_name='woocommerce_dixipay_settings'";
+			 $query = "SELECT option_value FROM {$wpdb->options} WHERE option_name='woocommerce_tmgpay_settings'";
 			 $serialize_data = $wpdb->get_var($query);
 			 $unserialized = unserialize($serialize_data);
 			 $client_key = $unserialized['client_key'];
@@ -830,12 +820,12 @@ function output_dixipay($post) {
 				//echo "<pre>";print_r( $res );echo "</pre>";
 				for($i=0;$i<count($res['transactions']);$i++){
 					if($res['transactions'][$i]['type']!='AUTH'){
-			  			$query="SELECT * FROM dixipay_transactions WHERE oid ='".$post->id."' AND date ='".$res['transactions'][$i]['date']."' AND type ='".$res['transactions'][$i]['type']."'";
+			  			$query="SELECT * FROM tmgpay_transactions WHERE oid ='".$post->id."' AND date ='".$res['transactions'][$i]['date']."' AND type ='".$res['transactions'][$i]['type']."'";
 							if ($wpdb->get_row($query)){
 							}
 							else{
 								$wpdb->query( $wpdb->prepare(
-								"INSERT INTO dixipay_transactions (oid, type, date,amount) VALUES ( %d, %s, %s, %s )",
+								"INSERT INTO tmgpay_transactions (oid, type, date,amount) VALUES ( %d, %s, %s, %s )",
 								array(
 								$post->id,
 								$res['transactions'][$i]['type'],
@@ -897,19 +887,19 @@ function output_dixipay($post) {
 
 			// end of checking status
 		   $meta_value = '';
-		   $query = "SELECT meta_value FROM {$wpdb->postmeta} WHERE meta_key='_dixipay_order_status' AND post_id='".$post->id."'";
+		   $query = "SELECT meta_value FROM {$wpdb->postmeta} WHERE meta_key='_tmgpay_order_status' AND post_id='".$post->id."'";
 			   if($wpdb->get_var($query)) {
 				    $meta_value = $wpdb->get_var($query);
 			   }
 			 ?><div style="width:500px;"><?php
 				   if($meta_value!='CANCELLED') {
-					   $query = "SELECT meta_value FROM {$wpdb->postmeta} WHERE meta_key='_dixipay_error_message' AND post_id='".$post->id."'";
+					   $query = "SELECT meta_value FROM {$wpdb->postmeta} WHERE meta_key='_tmgpay_error_message' AND post_id='".$post->id."'";
 				   if($wpdb->get_var($query)) {
 						$error_message = $wpdb->get_var($query);
 				   }
 				   //if error is already seen
 				   $is_error = '';
-				   $query = "SELECT meta_id,meta_value FROM {$wpdb->postmeta} WHERE meta_key='_dixipay_error_message_seen' AND post_id='".$post->id."'";
+				   $query = "SELECT meta_id,meta_value FROM {$wpdb->postmeta} WHERE meta_key='_tmgpay_error_message_seen' AND post_id='".$post->id."'";
 				   if($wpdb->get_row($query)) {
 					   $meta_data = $wpdb->get_row($query);
 					   $wpdb->update($wpdb->postmeta,
@@ -947,12 +937,12 @@ function output_dixipay($post) {
 
                  <?php } //}
 
-				$query = "SELECT * FROM dixipay_transactions WHERE oid='".$post->id."'";
+				$query = "SELECT * FROM tmgpay_transactions WHERE oid='".$post->id."'";
 			   if($wpdb->get_results($query)) {
 				    $row = $wpdb->get_results($query);?>
 
 
-                   <h4 style="clear:both"><?php _e( 'DixiPAY Payment Details', 'woocommerce' ); ?> </h4>
+                   <h4 style="clear:both"><?php _e( 'TMGPay Payment Details', 'woocommerce' ); ?> </h4>
                    <table cellpadding="0" cellspacing="0" border="1" width="500px">
                      <tr>
                        <th style="width:165px">Action</th>
@@ -978,9 +968,11 @@ function output_dixipay($post) {
                 </div> <?php }
 
 }
-add_action('woocommerce_admin_order_data_after_billing_address','output_dixipay');
+add_action('woocommerce_admin_order_data_after_billing_address','output_tmgpay');
 // Saving Data in Db
-function saveData($post_id, $post=array()){
+
+add_action('save_post','tmg_saveData');
+function tmg_saveData($post_id, $post=array()){
 	global $wpdb;
 		//chm
 	if(isset($_POST['order_action']))
@@ -990,7 +982,7 @@ function saveData($post_id, $post=array()){
 		$refundAmount = $_POST['refund_amount'];
 		$refund_amount = number_format((float)$refundAmount, 2, '.', '');
 		if($refund_amount == ''){$refund_amount = '0';}
-		$query = "SELECT meta_value FROM {$wpdb->postmeta} WHERE meta_key='_dixipay_data' AND post_id='".$post_id."'";
+		$query = "SELECT meta_value FROM {$wpdb->postmeta} WHERE meta_key='_tmgpay_data' AND post_id='".$post_id."'";
 		$serialize_data = $wpdb->get_var($query);
 		if($serialize_data) {
 		 $data = unserialize($serialize_data);
@@ -998,7 +990,7 @@ function saveData($post_id, $post=array()){
 		 $card_data=$card_data[0].$card_data[1];
 
 		 //getting password and key from db
-		 $query = "SELECT option_value FROM {$wpdb->options} WHERE option_name='woocommerce_dixipay_settings'";
+		 $query = "SELECT option_value FROM {$wpdb->options} WHERE option_name='woocommerce_tmgpay_settings'";
 		 $serialize_data = $wpdb->get_var($query);
 		 $unserialized = unserialize($serialize_data);
 		 $client_key = $unserialized['client_key'];
@@ -1038,7 +1030,7 @@ function saveData($post_id, $post=array()){
 		// Order status
 		$order->update_status( $_POST['order_status'] );
 				   $wpdb->query( $wpdb->prepare(
-					"INSERT INTO dixipay_transactions (oid, type, date,amount) VALUES ( %d, %s, %s, %s )",
+					"INSERT INTO tmgpay_transactions (oid, type, date,amount) VALUES ( %d, %s, %s, %s )",
 					array(
 						$post_id,
 						'REFUNDED',
@@ -1046,7 +1038,7 @@ function saveData($post_id, $post=array()){
 						$refund_amount
 					)
 				   ));
-				   $query = "SELECT meta_id FROM {$wpdb->postmeta} WHERE meta_key='_dixipay_error_message' AND post_id='".$post_id."'";
+				   $query = "SELECT meta_id FROM {$wpdb->postmeta} WHERE meta_key='_tmgpay_error_message' AND post_id='".$post_id."'";
 				   if($wpdb->get_var($query)) {
 					   $meta_id = $wpdb->get_var($query);
 						$wpdb->update($wpdb->postmeta,
@@ -1070,7 +1062,7 @@ function saveData($post_id, $post=array()){
 
 			 } else {
 				   $meta_id = 0;
-				   $query = "SELECT meta_id FROM {$wpdb->postmeta} WHERE meta_key='_dixipay_error_message' AND post_id='".$post_id."'";
+				   $query = "SELECT meta_id FROM {$wpdb->postmeta} WHERE meta_key='_tmgpay_error_message' AND post_id='".$post_id."'";
 				   if($wpdb->get_var($query)) {
 						$meta_id = $wpdb->get_var($query);
 				   }
@@ -1085,14 +1077,14 @@ function saveData($post_id, $post=array()){
 						"INSERT INTO {$wpdb->postmeta} (post_id, meta_key, meta_value) VALUES ( %d, %s, %s )",
 						array(
 							$post_id,
-							'_dixipay_error_message',
+							'_tmgpay_error_message',
 							$decoded['error_message']
 						)
 					   ));
 				   }
 				   //have to fix this later
 					   $meta_id = 0;
-				   $query = "SELECT meta_id FROM {$wpdb->postmeta} WHERE meta_key='_dixipay_error_message_seen' AND post_id='".$post_id."'";
+				   $query = "SELECT meta_id FROM {$wpdb->postmeta} WHERE meta_key='_tmgpay_error_message_seen' AND post_id='".$post_id."'";
 				   if($wpdb->get_var($query)) {
 						$meta_id = $wpdb->get_var($query);
 				   }
@@ -1107,7 +1099,7 @@ function saveData($post_id, $post=array()){
 						"INSERT INTO {$wpdb->postmeta} (post_id, meta_key, meta_value) VALUES ( %d, %s, %s )",
 						array(
 							$post_id,
-							'_dixipay_error_message_seen',
+							'_tmgpay_error_message_seen',
 							0
 						)
 					   ));
@@ -1123,7 +1115,7 @@ function saveData($post_id, $post=array()){
 		$refundAmount = $_POST['refund_amount'];
 		$refund_amount = number_format((float)$refundAmount, 2, '.', '');
 		if($refund_amount == ''){$refund_amount = '0';}
-		$query = "SELECT meta_value FROM {$wpdb->postmeta} WHERE meta_key='_dixipay_data' AND post_id='".$post_id."'";
+		$query = "SELECT meta_value FROM {$wpdb->postmeta} WHERE meta_key='_tmgpay_data' AND post_id='".$post_id."'";
 		$serialize_data = $wpdb->get_var($query);
 		if($serialize_data) {
 		 $data = unserialize($serialize_data);
@@ -1131,7 +1123,7 @@ function saveData($post_id, $post=array()){
 		 $card_data=$card_data[0].$card_data[1];
 
 		 //getting password and key from db
-		 $query = "SELECT option_value FROM {$wpdb->options} WHERE option_name='woocommerce_dixipay_settings'";
+		 $query = "SELECT option_value FROM {$wpdb->options} WHERE option_name='woocommerce_tmgpay_settings'";
 		 $serialize_data = $wpdb->get_var($query);
 		 $unserialized = unserialize($serialize_data);
 		 $client_key = $unserialized['client_key'];
@@ -1170,7 +1162,7 @@ function saveData($post_id, $post=array()){
 		// Order status
 		$order->update_status( $_POST['order_status'] );
 			   $wpdb->query( $wpdb->prepare(
-					"INSERT INTO dixipay_transactions (oid, type, date,amount) VALUES ( %d, %s, %s, %s )",
+					"INSERT INTO tmgpay_transactions (oid, type, date,amount) VALUES ( %d, %s, %s, %s )",
 					array(
 						$post_id,
 						'CAPTURED',
@@ -1178,7 +1170,7 @@ function saveData($post_id, $post=array()){
 						$refund_amount
 					)
 				   ));
-			   $query = "SELECT meta_id FROM {$wpdb->postmeta} WHERE meta_key='_dixipay_error_message' AND post_id='".$post_id."'";
+			   $query = "SELECT meta_id FROM {$wpdb->postmeta} WHERE meta_key='_tmgpay_error_message' AND post_id='".$post_id."'";
 				   if($wpdb->get_var($query)) {
 					   $meta_id = $wpdb->get_var($query);
 						$wpdb->update($wpdb->postmeta,
@@ -1189,7 +1181,7 @@ function saveData($post_id, $post=array()){
 				   }
 			 } else {
 				   $meta_id = 0;
-				   $query = "SELECT meta_id FROM {$wpdb->postmeta} WHERE meta_key='_dixipay_error_message' AND post_id='".$post_id."'";
+				   $query = "SELECT meta_id FROM {$wpdb->postmeta} WHERE meta_key='_tmgpay_error_message' AND post_id='".$post_id."'";
 				   if($wpdb->get_var($query)) {
 						$meta_id = $wpdb->get_var($query);
 				   }
@@ -1204,14 +1196,14 @@ function saveData($post_id, $post=array()){
 						"INSERT INTO {$wpdb->postmeta} (post_id, meta_key, meta_value) VALUES ( %d, %s, %s )",
 						array(
 							$post_id,
-							'_dixipay_error_message',
+							'_tmgpay_error_message',
 							$decoded['error_message']
 						)
 					   ));
 				   }
 				   //have to fix this later
 					   $meta_id = 0;
-				   $query = "SELECT meta_id FROM {$wpdb->postmeta} WHERE meta_key='_dixipay_error_message_seen' AND post_id='".$post_id."'";
+				   $query = "SELECT meta_id FROM {$wpdb->postmeta} WHERE meta_key='_tmgpay_error_message_seen' AND post_id='".$post_id."'";
 				   if($wpdb->get_var($query)) {
 						$meta_id = $wpdb->get_var($query);
 				   }
@@ -1226,7 +1218,7 @@ function saveData($post_id, $post=array()){
 						"INSERT INTO {$wpdb->postmeta} (post_id, meta_key, meta_value) VALUES ( %d, %s, %s )",
 						array(
 							$post_id,
-							'_dixipay_error_message_seen',
+							'_tmgpay_error_message_seen',
 							0
 						)
 					   ));
@@ -1242,7 +1234,7 @@ function saveData($post_id, $post=array()){
 		$refundAmount = $_POST['_order_total'];
 		$refund_amount = number_format((float)$refundAmount, 2, '.', '');
 		if($refund_amount == ''){$refund_amount = '0.00';}
-		$query = "SELECT meta_value FROM {$wpdb->postmeta} WHERE meta_key='_dixipay_data' AND post_id='".$post_id."'";
+		$query = "SELECT meta_value FROM {$wpdb->postmeta} WHERE meta_key='_tmgpay_data' AND post_id='".$post_id."'";
 		$serialize_data = $wpdb->get_var($query);
 		if($serialize_data) {
 		 $data = unserialize($serialize_data);
@@ -1250,7 +1242,7 @@ function saveData($post_id, $post=array()){
 		 $card_data=$card_data[0].$card_data[1];
 
 		 //getting password and key from db
-		 $query = "SELECT option_value FROM {$wpdb->options} WHERE option_name='woocommerce_dixipay_settings'";
+		 $query = "SELECT option_value FROM {$wpdb->options} WHERE option_name='woocommerce_tmgpay_settings'";
 		 $serialize_data = $wpdb->get_var($query);
 		 $unserialized = unserialize($serialize_data);
 		 $client_key = $unserialized['client_key'];
@@ -1290,13 +1282,13 @@ function saveData($post_id, $post=array()){
 					"INSERT INTO {$wpdb->postmeta} (post_id, meta_key, meta_value) VALUES ( %d, %s, %s )",
 					array(
 						$post_id,
-						'_dixipay_order_status',
+						'_tmgpay_order_status',
 						'CANCELLED'
 					)
 				   ));
 
 			   $wpdb->query( $wpdb->prepare(
-					"INSERT INTO dixipay_transactions (oid, type, date,amount) VALUES ( %d, %s, %s, %s )",
+					"INSERT INTO tmgpay_transactions (oid, type, date,amount) VALUES ( %d, %s, %s, %s )",
 					array(
 						$post_id,
 						'VOID',
@@ -1304,7 +1296,7 @@ function saveData($post_id, $post=array()){
 						$refund_amount
 					)
 				   ));
-			    $query = "SELECT meta_id FROM {$wpdb->postmeta} WHERE meta_key='_dixipay_error_message' AND post_id='".$post_id."'";
+			    $query = "SELECT meta_id FROM {$wpdb->postmeta} WHERE meta_key='_tmgpay_error_message' AND post_id='".$post_id."'";
 				   if($wpdb->get_var($query)) {
 					   $meta_id = $wpdb->get_var($query);
 						$wpdb->update($wpdb->postmeta,
@@ -1315,7 +1307,7 @@ function saveData($post_id, $post=array()){
 				   }
 			 } else {
 				   $meta_id = 0;
-				   $query = "SELECT meta_id FROM {$wpdb->postmeta} WHERE meta_key='_dixipay_error_message' AND post_id='".$post_id."'";
+				   $query = "SELECT meta_id FROM {$wpdb->postmeta} WHERE meta_key='_tmgpay_error_message' AND post_id='".$post_id."'";
 				   if($wpdb->get_var($query)) {
 						$meta_id = $wpdb->get_var($query);
 				   }
@@ -1330,14 +1322,14 @@ function saveData($post_id, $post=array()){
 						"INSERT INTO {$wpdb->postmeta} (post_id, meta_key, meta_value) VALUES ( %d, %s, %s )",
 						array(
 							$post_id,
-							'_dixipay_error_message',
+							'_tmgpay_error_message',
 							$decoded['error_message']
 						)
 					   ));
 				   }
 				   //have to fix this later
 					   $meta_id = 0;
-				   $query = "SELECT meta_id FROM {$wpdb->postmeta} WHERE meta_key='_dixipay_error_message_seen' AND post_id='".$post_id."'";
+				   $query = "SELECT meta_id FROM {$wpdb->postmeta} WHERE meta_key='_tmgpay_error_message_seen' AND post_id='".$post_id."'";
 				   if($wpdb->get_var($query)) {
 						$meta_id = $wpdb->get_var($query);
 				   }
@@ -1352,7 +1344,7 @@ function saveData($post_id, $post=array()){
 						"INSERT INTO {$wpdb->postmeta} (post_id, meta_key, meta_value) VALUES ( %d, %s, %s )",
 						array(
 							$post_id,
-							'_dixipay_error_message_seen',
+							'_tmgpay_error_message_seen',
 							0
 						)
 					   ));
@@ -1367,4 +1359,3 @@ function saveData($post_id, $post=array()){
 	}
 
 }
-add_action('save_post','saveData');
