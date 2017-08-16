@@ -413,7 +413,7 @@ function woocommerce_dixipay_init() {
     		// 				lineHeight:		"24px",
     		// 			}
     		// 		});
-    		// 	jQuery("#submit_dixipay_payment_form").click();
+    		jQuery("#submit_dixipay_payment_form").click();
     		// ' );
     		$s_form = '<form action="' . esc_url( $dixipay_adr ) . '" method="post" id="dixipay_payment_form" target="_top">
     				<input type="hidden" name="action" value="' . $response["action"]. '" />
